@@ -4,13 +4,19 @@
   
   
   <entry>
-    <title>my new post</title>
-    <link href="/2023/11/06/my-new-post/"/>
-    <url>/2023/11/06/my-new-post/</url>
+    <title>Ray: A Distributed Framework for Emerging AI Applications</title>
+    <link href="/2023/11/06/Ray-A-Distributed-Framework-for-Emerging-AI-Applications/"/>
+    <url>/2023/11/06/Ray-A-Distributed-Framework-for-Emerging-AI-Applications/</url>
     
-    <content type="html"><![CDATA[<h2 id="this-is-the-test-post"><a href="#this-is-the-test-post" class="headerlink" title="this is the test post"></a>this is the test post</h2>]]></content>
+    <content type="html"><![CDATA[<h2 id="论文信息"><a href="#论文信息" class="headerlink" title="论文信息"></a>论文信息</h2><p>作者：<br>论文第一作者为 Philipp Moritz 及 Robert Nishihara，是 UC Berkeley(加利福尼亚大学伯克利分校) AMP Lab 的博士生，而 Michael I. Jordan 和 Ion Stoica 的名字也赫然列于其中。</p><p>Michael I. Jordan ：UC Berkeley 电气工程与计算机科学系和统计系杰出教授，是美国国家科学院、美国国家工程院、美国艺术与科学院三院院士，是机器学习领域唯一获此成就的科学家。2016 年，他被 Semantic Scholar 评为“最具影响力的计算机科学家”。</p><p>Ion Stoica ：UC Berkeley 计算机系教授，AMPLab 共同创始人，弹性 P2P 协议 Chord、集群内存计算框架 Spark、集群资源管理平台 Mesos 核心作者。</p><p>论文来源：the<br>13th USENIX Symposium on Operating Systems Design<br>and Implementation </p><p>时间：October 8–10, 2018</p><h2 id="Motivation"><a href="#Motivation" class="headerlink" title="Motivation"></a>Motivation</h2><p>目前人工智能应用都是基于监督学习开发的，即模型线下训练，然后部署到服务器上进行预测。强化学习需要在不确定环境中持续学习。<br>RL 应用与传统的监督学习应用有三个不同之处：</p><p>1）RL 应用严重依赖仿真来探索所在状态及操作结果。这需要大量的计算，现实情况下，一个应用大概需要进行亿万次仿真。</p><p>2）RL 应用的计算图是异质的、动态变化的。一次仿真可能会花掉几毫秒到几分钟的时间，仿真的结果又决定未来仿真的参数。</p><p>3）许多 RL 应用程序，如机器人控制或自主驾驶，需要迅速采取行动，以响应不断变化的环境。</p><h2 id="Requirements"><a href="#Requirements" class="headerlink" title="Requirements"></a>Requirements</h2><p>需要一个能支持异质和动态计算图，同时以毫秒级延迟每秒处理数以百万计任务的计算框架。RL 应用对系统提出了<b>灵活性、表现性能以及易开发</b>的要求，Ray 系统则是为满足这些要求而设计的。</p><h2 id="Architecture"><a href="#Architecture" class="headerlink" title="Architecture"></a>Architecture</h2><p>Ray整体架构由应用层和系统层两部分构成，Application 层实现 API 和计算模型，执行分布式计算任务。System 层负责任务调度和数据管理，来满足表现性能和容错的要求。<br><img src="/image.png" alt="Alt text"></p><p>应用层：</p><ol><li>用户在Driver定义的function,会同步推送到所有的worker上去，worker顺序执行function。</li><li>用户在Driver定义的actor，会提交到一个worker上，执行任务，任务之间能够共享变量。</li></ol><p>系统层：</p><ol><li>GCS(全局控制存储)：系统所有的控制状态存储在 GSC 中，这样系统其他组件可以是无状态的。不仅简化了对容错的支持（出现错误时，组件可以从 GSC 中读取最近状态并重新启动），也使得其他组件可以横向扩展（该组件的复制或碎片可以通过 GSC 状态共享）。</li><li>调度策略:自底向上的调度策略，二级调度，首先向本地调度器提交任务，若本地资源无法满足，则向全局调度器提交任务。通过允许本地决策，降低了任务延迟，并且通过减少全局调度器的负担，增加了系统的吞吐量。</li><li>基于内存的分布式对象存储(Object Store)：</li></ol><h2 id="远端任务执行样例"><a href="#远端任务执行样例" class="headerlink" title="远端任务执行样例"></a>远端任务执行样例</h2><p><img src="/image-2.png" alt="Alt text"></p><ol start="0"><li>在Driver定义的function预先注册在GCS上</li><li>driver将function提交到本地调度器，并返回future(任务的返回结果，不一定要等结果完全返回),在此处是idc</li><li>提交到全局调度器</li><li>全局调度器在GCS上查找function的入参id_a和id_b</li><li>全局调度器将任务调度到N2上(N2有id_b)</li><li>(N2)本地调度器确认id_a、id_b是否存在</li><li>(N2)本地调度器发现id_a不存在，向GCS查找id_a的address</li><li>(N2)本地调度器发现id_a在N1上，则从N1直接将数据拷贝过来</li><li>触发并行计算任务</li><li>获取参数计算</li></ol><p><img src="/image-4.png" alt="Alt text"></p><ol><li>ray.get(id)触发任务执行，并检查N1的Object Storage是否有c</li><li>c的结果还没计算出来，向GCS查询； 但是最开始id_c还没有创建出来，所以N1的object store就创建一个回调函数，并将id_c存到GCS中区</li><li>N2计算结果执行完成，N2把计算结果c存到N2的本地对象存储中</li><li>N2的本地对象存储将c的地址存到GCS上</li><li>GCS触发回调，告诉N1本地对象存储c的地址</li><li>N1从N2复制c的值</li><li>结果返回Driver</li></ol><h2 id="Use-of-Ray"><a href="#Use-of-Ray" class="headerlink" title="Use of Ray"></a>Use of Ray</h2><p>官网: <a href="https://docs.ray.io/en/latest/index.html">https://docs.ray.io/en/latest/index.html</a></p><h2 id="基本术语"><a href="#基本术语" class="headerlink" title="基本术语"></a>基本术语</h2><ol><li>Actor model: Actor模型是一种并行计算模型，提供了一种用于构建并发、分布式系统的抽象方法，Actor具有自己的状态和行为，且Actor之间是通过消息传递进行通信的。Actor模型中的消息传递是异步的，发送方不需要等待接收方的响应，从而避免了锁和同步的开销。 &#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D;&#x3D; 后续了解Akka多并发开发框架(采用了Actor模型，具有自己的状态和消息队列)，传统的多线程开发容易带来锁竞争、死锁等问题。</li><li>Driver: 执行用户程序的进程。</li><li>Worker: 无状态进程。由系统分配任务，自动启动。当一个remote function被声明时，会将该function自动推送到所有的worker上，且worker顺序执行function。</li><li>Actor: 有状态进程。由worker或driver显示实例化调用，actors顺序执行方法。</li></ol>]]></content>
     
     
+    
+    <tags>
+      
+      <tag>Distriubted Compute Architecture</tag>
+      
+    </tags>
     
   </entry>
   
